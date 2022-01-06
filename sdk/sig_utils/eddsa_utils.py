@@ -18,8 +18,11 @@ class EddsaSignHelper:
         msgHash = poseidon(serialized_data, self.poseidon_sign_param)
         return msgHash
 
-    def sign(self, structure_data):
-        msgHash = self.hash(structure_data)
+    def sign(self, structure_data=None, msgHash=None):
+        if msgHash is None:
+            assert structure_data is not None
+            msgHash = self.hash(structure_data)
+
         signedMessage = PoseidonEdDSA.sign(msgHash, self.private_key)
         # print("sign=", signedMessage)
         return "0x" + "".join([
