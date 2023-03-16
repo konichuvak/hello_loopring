@@ -1,13 +1,27 @@
-from sdk.ethsnarks.eddsa import PureEdDSA, PoseidonEdDSA
-from sdk.ethsnarks.field import FQ, SNARK_SCALAR_FIELD
-from sdk.ethsnarks.poseidon import poseidon_params, poseidon
-from sdk.ethsnarks.eddsa import Signature, SignedMessage
-import urllib
+__all__ = [
+    'EddsaSignHelper',
+    'DummyEddsaSignHelper',
+    'UrlEddsaSignHelper',
+    'OrderEddsaSignHelper',
+    'UpdateAccountEddsaSignHelper',
+    'OriginTransferEddsaSignHelper',
+    'DualAuthTransferEddsaSignHelper',
+    'WithdrawalEddsaSignHelper',
+    'MessageHashEddsaSignHelper',
+    'MessageHash2EddsaSignHelper',
+]
+
 import hashlib
 import json
+import urllib
+
+from sdk.ethsnarks.eddsa import PoseidonEdDSA, Signature
+from sdk.ethsnarks.field import FQ, SNARK_SCALAR_FIELD
+from sdk.ethsnarks.poseidon import poseidon, poseidon_params
+
 
 class EddsaSignHelper:
-    def __init__(self, poseidon_params, private_key = "0x1"):
+    def __init__(self, poseidon_params, private_key="0x1"):
         self.poseidon_sign_param = poseidon_params
         self.private_key = FQ(int(private_key, 16))
         assert self.private_key != FQ.zero()
@@ -26,11 +40,11 @@ class EddsaSignHelper:
         signedMessage = PoseidonEdDSA.sign(msgHash, self.private_key)
         # print("sign=", signedMessage)
         return "0x" + "".join([
-                        hex(int(signedMessage.sig.R.x))[2:].zfill(64),
-                        hex(int(signedMessage.sig.R.y))[2:].zfill(64),
-                        hex(int(signedMessage.sig.s))[2:].zfill(64)
-                    ])
-    
+            hex(int(signedMessage.sig.R.x))[2:].zfill(64),
+            hex(int(signedMessage.sig.R.y))[2:].zfill(64),
+            hex(int(signedMessage.sig.s))[2:].zfill(64)
+        ])
+
     def sigStrToSignature(self, sig):
         assert len(sig) == 194
         pureHexSig = sig[2:]
@@ -48,11 +62,12 @@ class EddsaSignHelper:
     def verify(self, message, sig):
         return PoseidonEdDSA.verify(sig.A, sig.sig, sig.msg)
 
+
 class DummyEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
         super(DummyEddsaSignHelper, self).__init__(
-            poseidon_params = poseidon_params(SNARK_SCALAR_FIELD, 2, 6, 53, b'poseidon', 5, security_target=128),
-            private_key = private_key
+            poseidon_params=poseidon_params(SNARK_SCALAR_FIELD, 2, 6, 53, b'poseidon', 5, security_target=128),
+            private_key=private_key
         )
 
     def serialize_data(self, dummy):
@@ -60,14 +75,15 @@ class DummyEddsaSignHelper(EddsaSignHelper):
             int(dummy["data"]),
         ]
 
+
 class UrlEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key, host=""):
         self.host = host
         super(UrlEddsaSignHelper, self).__init__(
-            poseidon_params = poseidon_params(SNARK_SCALAR_FIELD, 2, 6, 53, b'poseidon', 5, security_target=128),
-            private_key = private_key
+            poseidon_params=poseidon_params(SNARK_SCALAR_FIELD, 2, 6, 53, b'poseidon', 5, security_target=128),
+            private_key=private_key
         )
-    
+
     def hash(self, structure_data):
         serialized_data = self.serialize_data(structure_data)
         hasher = hashlib.sha256()
@@ -80,7 +96,8 @@ class UrlEddsaSignHelper(EddsaSignHelper):
         method = request.method
         url = urllib.parse.quote(self.host + request.path, safe='')
         if method in ["GET", "DELETE"]:
-            data = urllib.parse.quote("&".join([f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in request.params.items()]), safe='')
+            data = urllib.parse.quote(
+                "&".join([f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in request.params.items()]), safe='')
         elif method in ["POST", "PUT"]:
             data = urllib.parse.quote(json.dumps(request.data, separators=(',', ':')), safe='')
         else:
@@ -90,13 +107,14 @@ class UrlEddsaSignHelper(EddsaSignHelper):
         # print("&".join([method, url, data]))
         return "&".join([method, url, data])
 
+
 class OrderEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
         super(OrderEddsaSignHelper, self).__init__(
             poseidon_params(SNARK_SCALAR_FIELD, 12, 6, 53, b'poseidon', 5, security_target=128),
             private_key
         )
-    
+
     def serialize_data(self, order):
         return [
             int(order["exchange"], 16),
@@ -112,13 +130,14 @@ class OrderEddsaSignHelper(EddsaSignHelper):
             int(order.get("taker", "0x0"), 16)
         ]
 
+
 class UpdateAccountEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
         super(UpdateAccountEddsaSignHelper, self).__init__(
             poseidon_params(SNARK_SCALAR_FIELD, 9, 6, 53, b'poseidon', 5, security_target=128),
             private_key
         )
-    
+
     def serialize_data(self, updateAccount):
         return [
             int(updateAccount['exchange'], 16),
@@ -131,6 +150,7 @@ class UpdateAccountEddsaSignHelper(EddsaSignHelper):
             int(updateAccount['nonce'])
         ]
 
+
 class OriginTransferEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
         super(OriginTransferEddsaSignHelper, self).__init__(
@@ -142,17 +162,18 @@ class OriginTransferEddsaSignHelper(EddsaSignHelper):
         return [
             int(originTransfer['exchange'], 16),
             int(originTransfer['payerId']),
-            int(originTransfer['payeeId']), # payer_toAccountID
+            int(originTransfer['payeeId']),  # payer_toAccountID
             int(originTransfer['token']['tokenId']),
             int(originTransfer['token']['volume']),
             int(originTransfer['maxFee']['tokenId']),
             int(originTransfer['maxFee']['volume']),
-            int(originTransfer['payeeAddr'], 16), # payer_to
-            0, #int(originTransfer.get('dualAuthKeyX', '0'),16),
-            0, #int(originTransfer.get('dualAuthKeyY', '0'),16),
+            int(originTransfer['payeeAddr'], 16),  # payer_to
+            0,  # int(originTransfer.get('dualAuthKeyX', '0'),16),
+            0,  # int(originTransfer.get('dualAuthKeyY', '0'),16),
             int(originTransfer['validUntil']),
             int(originTransfer['storageId'])
         ]
+
 
 class DualAuthTransferEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
@@ -163,19 +184,20 @@ class DualAuthTransferEddsaSignHelper(EddsaSignHelper):
 
     def serialize_data(self, dualAuthTransfer):
         return [
-            int(dualAuthTransfer['exchange'],16),
+            int(dualAuthTransfer['exchange'], 16),
             int(dualAuthTransfer['accountId']),
             int(dualAuthTransfer['payee_toAccountID']),
             int(dualAuthTransfer['token']),
             int(dualAuthTransfer['amount']),
             int(dualAuthTransfer['feeToken']),
             int(dualAuthTransfer['maxFeeAmount']),
-            int(dualAuthTransfer['to'],16),
-            int(dualAuthTransfer.get('dualAuthKeyX', '0'),16),
-            int(dualAuthTransfer.get('dualAuthKeyY', '0'),16),
+            int(dualAuthTransfer['to'], 16),
+            int(dualAuthTransfer.get('dualAuthKeyX', '0'), 16),
+            int(dualAuthTransfer.get('dualAuthKeyY', '0'), 16),
             int(dualAuthTransfer['validUntil']),
             int(dualAuthTransfer['storageId']),
         ]
+
 
 class WithdrawalEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
@@ -197,6 +219,7 @@ class WithdrawalEddsaSignHelper(EddsaSignHelper):
             int(withdraw['storageId']),
         ]
 
+
 class MessageHashEddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
         super(MessageHashEddsaSignHelper, self).__init__(
@@ -215,6 +238,7 @@ class MessageHashEddsaSignHelper(EddsaSignHelper):
         else:
             raise TypeError("Unknown type " + str(type(data)))
 
+
 class MessageHash2EddsaSignHelper(EddsaSignHelper):
     def __init__(self, private_key):
         super(MessageHash2EddsaSignHelper, self).__init__(
@@ -227,8 +251,8 @@ class MessageHash2EddsaSignHelper(EddsaSignHelper):
 
     def serialize_data(self, data):
         if isinstance(data, bytes):
-            return int(data.hex(), 16)  % SNARK_SCALAR_FIELD
+            return int(data.hex(), 16) % SNARK_SCALAR_FIELD
         elif isinstance(data, str):
-            return int(data, 16)  % SNARK_SCALAR_FIELD
+            return int(data, 16) % SNARK_SCALAR_FIELD
         else:
             raise TypeError("Unknown type " + str(type(data)))

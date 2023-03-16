@@ -1,57 +1,53 @@
-import hashlib
-import hmac
-import ujson
-from copy import copy
-from datetime import datetime, timedelta
-from enum import Enum, Flag
-from threading import Lock
-from operator import itemgetter
-from py_eth_sig_utils import utils as sig_utils
-from py_eth_sig_utils.signing import v_r_s_to_signature
-from random import randint
-import re
-import sys
-from time import time, sleep
 import urllib
+from enum import Enum, Flag
+from time import sleep, time
+
+import ujson
+from py_eth_sig_utils import utils as sig_utils
 from web3 import Web3
 
 from sdk.request_utils.rest_client import RestClient
-from sdk.ethsnarks.eddsa import PureEdDSA, PoseidonEdDSA
-from sdk.ethsnarks.field import FQ, SNARK_SCALAR_FIELD
-from sdk.ethsnarks.poseidon import poseidon_params, poseidon
 from sdk.sig_utils.ecdsa_utils import *
 from sdk.sig_utils.eddsa_utils import *
 
 LOOPRING_REST_HOST = "https://api.uat.loopring.pro"
 
+
+def v_r_s_to_signature(v, r, s):
+    return r.to_bytes(32, 'big') + s.to_bytes(32, 'big') + v.to_bytes(1, 'big')
+
+
 class Security(Flag):
-    NONE            = 0
-    EDDSA_URL_SIGN  = 1
-    API_KEY         = 2
-    ECDSA_EIP_AUTH  = 4
-    ECDSA_URL_SIGN  = 8
+    NONE = 0
+    EDDSA_URL_SIGN = 1
+    API_KEY = 2
+    ECDSA_EIP_AUTH = 4
+    ECDSA_URL_SIGN = 8
+
 
 class SignatureType(Enum):
-    ECDSA           = 0
-    EDDSA           = 1
-    HASH_APPROVED   = 2
+    ECDSA = 0
+    EDDSA = 1
+    HASH_APPROVED = 2
+
 
 class EthSignType:
-    ILLEGAL     = "00"
-    INVALID     = "01"
-    EIP_712     = "02"
-    ETH_SIGN    = "03"
+    ILLEGAL = "00"
+    INVALID = "01"
+    EIP_712 = "02"
+    ETH_SIGN = "03"
+
 
 class OffchainRequestType(Enum):
-    ORDER                    = 0
-    OFFCHAIN_WITHDRAWAL      = 1
-    UPDATE_ACCOUNT           = 2
-    TRANSFER                 = 3
+    ORDER = 0
+    OFFCHAIN_WITHDRAWAL = 1
+    UPDATE_ACCOUNT = 2
+    TRANSFER = 3
     FAST_OFFCHAIN_WITHDRAWAL = 4
-    OPEN_ACCOUNT             = 5
-    AMM_EXIT                 = 6
-    DEPOSIT                  = 7
-    AMM_JOIN                 = 8
+    OPEN_ACCOUNT = 5
+    AMM_EXIT = 6
+    DEPOSIT = 7
+    AMM_JOIN = 8
 
 
 class LoopringV3Client(RestClient):
@@ -59,24 +55,24 @@ class LoopringV3Client(RestClient):
     LOOPRING REST API SAMPLE
     """
 
-    MAX_ORDER_ID = 1<<32
+    MAX_ORDER_ID = 1 << 32
 
     def __init__(self):
         """"""
         super().__init__()
         # exported account
-        self.api_key     = ""
-        self.address     = ""
-        self.publicKeyX  = ""
-        self.publicKeyY  = ""
-        self.accountId   = 0
+        self.api_key = ""
+        self.address = ""
+        self.publicKeyX = ""
+        self.publicKeyY = ""
+        self.accountId = 0
 
         # self.web3 = Web3(Web3.HTTPProvider(eth_addr))
         # order related
-        self.orderId     = [0] * 65536
-        self.offchainId     = [0] * 65536
+        self.orderId = [0] * 65536
+        self.offchainId = [0] * 65536
         self.time_offset = 0
-        self.nonce      = 0
+        self.nonce = 0
 
         self.ammPoolNames = {}
         self.ammPools = {}
@@ -87,19 +83,19 @@ class LoopringV3Client(RestClient):
         self.init(LOOPRING_REST_HOST)
         self.start()
 
-    def connect(self, account_settings : dict):
+    def connect(self, account_settings: dict):
         """
         Initialize connection to LOOPRING REST server.
         """
-        self.accountId  = account_settings['accountId']
-        self.address    = account_settings['accountAddress']
-        self.api_key    = account_settings['apiKey']
-        self.exchange   = account_settings['exchangeAddress']
-        self.ecdsaKey   = int(account_settings['ecdsaKey'], 16).to_bytes(32, byteorder='big')
-        self.eddsaKey   = account_settings['privateKey']
+        self.accountId = account_settings['accountId']
+        self.address = account_settings['accountAddress']
+        self.api_key = account_settings['apiKey']
+        self.exchange = account_settings['exchangeAddress']
+        self.ecdsaKey = int(account_settings['ecdsaKey'], 16).to_bytes(32, byteorder='big')
+        self.eddsaKey = account_settings['privateKey']
         self.publicKeyX = account_settings["publicKeyX"]
         self.publicKeyY = account_settings["publicKeyY"]
-        self.chainId    = account_settings["chainId"]
+        self.chainId = account_settings["chainId"]
         self.whitelisted = account_settings["whitelisted"]
 
         self.next_eddsaKey = None
@@ -138,9 +134,9 @@ class LoopringV3Client(RestClient):
 
         # request headers
         headers = {
-            "Content-Type" : "application/json",
-            "Accept"       : "application/json",
-            "X-API-KEY"    : self.api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-API-KEY": self.api_key,
         }
         if request.headers != None:
             headers.update(request.headers)
@@ -157,8 +153,8 @@ class LoopringV3Client(RestClient):
             signer = UrlEddsaSignHelper(self.eddsaKey, LOOPRING_REST_HOST)
             message = signer.hash(request)
             v, r, s = sig_utils.ecsign(message, self.ecdsaKey)
-            ecdsaSig =  "0x" + bytes.hex(v_r_s_to_signature(v, r, s)) + EthSignType.EIP_712
-            headers.update({"X-API-SIG": signature})
+            ecdsaSig = "0x" + bytes.hex(v_r_s_to_signature(v, r, s)) + EthSignType.EIP_712
+            headers.update({"X-API-SIG": ecdsaSig})
 
         request.path = path
         if request.method not in ["GET", "DELETE"]:
@@ -180,8 +176,8 @@ class LoopringV3Client(RestClient):
         response = self.request(
             "GET",
             headers={
-                "Content-Type" : "application/json",
-                "Accept"       : "application/json",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
             },
             path="/api/v3/timestamp",
             data=data
@@ -198,8 +194,8 @@ class LoopringV3Client(RestClient):
         response = self.request(
             "GET",
             headers={
-                "Content-Type" : "application/json",
-                "Accept"       : "application/json",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
             },
             path="/api/v3/" + restPath,
             data=data
@@ -217,8 +213,8 @@ class LoopringV3Client(RestClient):
         response = self.request(
             "GET",
             headers={
-                "Content-Type" : "application/json",
-                "Accept"       : "application/json",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
             },
             path="/api/v3/amm/balance",
             data=data,
@@ -309,7 +305,7 @@ class LoopringV3Client(RestClient):
             path="/api/v3/account",
             callback=self.on_query_account,
             data=data,
-            params = {
+            params={
                 "owner": self.address
             }
         )
@@ -329,7 +325,7 @@ class LoopringV3Client(RestClient):
             path=f"/api/v3/user/{dataType}",
             callback=self.on_get_user_data,
             data=data,
-            params = {
+            params={
                 "accountId": self.accountId
             },
             extra=dataType
@@ -373,8 +369,8 @@ class LoopringV3Client(RestClient):
             path=f"/api/v3/orders",
             callback=self.on_get_user_data,
             data=data,
-            params = params,
-            extra = self.accountId
+            params=params,
+            extra=self.accountId
         )
 
     def get_withdrawals(self):
@@ -400,8 +396,8 @@ class LoopringV3Client(RestClient):
             path=f"/api/v3/amm/user/transactions",
             callback=self.on_get_user_data,
             data=data,
-            params = params,
-            extra = self.accountId
+            params=params,
+            extra=self.accountId
         )
 
     def get_apiKey(self):
@@ -415,7 +411,7 @@ class LoopringV3Client(RestClient):
             path="/api/v3/apiKey",
             callback=self.on_get_apiKey,
             data=data,
-            params = {
+            params={
                 "accountId": self.accountId,
             }
         )
@@ -446,12 +442,13 @@ class LoopringV3Client(RestClient):
         for balance in data:
             tokenAmount = balance['total']
             frozenAmount = balance['locked']
-            pending = balance.get('pending', {"withdraw":"0","deposit":"0"})
+            pending = balance.get('pending', {"withdraw": "0", "deposit": "0"})
             for token in self.tokenIds.values():
                 if token == balance['tokenId']:
                     token_symbol = self.tokenNames[token]
                     decimals = self.tokenDecimals[token]
-                    print(f"Account balance {token_symbol} : {float(tokenAmount)/(10**decimals)}, locked: {float(frozenAmount)/(10**decimals)}")
+                    print(
+                        f"Account balance {token_symbol} : {float(tokenAmount) / (10 ** decimals)}, locked: {float(frozenAmount) / (10 ** decimals)}")
 
     def get_storageId(self, tokenSId):
         """"""
@@ -464,9 +461,9 @@ class LoopringV3Client(RestClient):
             path="/api/v3/storageId",
             callback=self.on_get_storageId,
             data=data,
-            params = {
-                "accountId"     : self.accountId,
-                "sellTokenId"   : tokenSId
+            params={
+                "accountId": self.accountId,
+                "sellTokenId": tokenSId
             }
         )
 
@@ -482,13 +479,13 @@ class LoopringV3Client(RestClient):
         self.publicKeyX = "0x" + hex(int(publicKey.x))[2:].zfill(64)
         self.publicKeyY = "0x" + hex(int(publicKey.y))[2:].zfill(64)
         req = {
-            "publicKey" : {
-                "x" : self.publicKeyX,
-                "y" : self.publicKeyY,
+            "publicKey": {
+                "x": self.publicKeyX,
+                "y": self.publicKeyY,
             },
-            "maxFee" : {
-                "tokenId" : 0,
-                "volume"  : "0"
+            "maxFee": {
+                "tokenId": 0,
+                "volume": "0"
             },
             'validUntil': 1700000000,
             'nonce': self.nonce
@@ -500,7 +497,7 @@ class LoopringV3Client(RestClient):
         message = generateUpdateAccountEIP712Hash(updateAccountReq)
         # print(f"message hash = {bytes.hex(message)}")
         v, r, s = sig_utils.ecsign(message, self.ecdsaKey)
-        ecdsaSig =  "0x" + bytes.hex(v_r_s_to_signature(v, r, s)) + EthSignType.EIP_712
+        ecdsaSig = "0x" + bytes.hex(v_r_s_to_signature(v, r, s)) + EthSignType.EIP_712
         headers = {'X-API-SIG': ecdsaSig}
         data['ecdsaSignature'] = ecdsaSig
 
@@ -519,13 +516,13 @@ class LoopringV3Client(RestClient):
         assert self.eddsaKey is not None and privateKey is not None
         self.next_eddsaKey = hex(int(privateKey))
         req = {
-            "publicKey" : {
-                "x" : '0x' + hex(int(publicKey.x))[2:].zfill(64),
-                "y" : '0x' + hex(int(publicKey.y))[2:].zfill(64),
+            "publicKey": {
+                "x": '0x' + hex(int(publicKey.x))[2:].zfill(64),
+                "y": '0x' + hex(int(publicKey.y))[2:].zfill(64),
             },
-            "maxFee" : {
-                "tokenId" : 0,
-                "volume"  : "4000000000000000"
+            "maxFee": {
+                "tokenId": 0,
+                "volume": "4000000000000000"
             },
             'validUntil': 1700000000,
             'nonce': self.nonce
@@ -562,13 +559,13 @@ class LoopringV3Client(RestClient):
     def _create_update_request(self, req):
         """"""
         return {
-            "exchange" : self.exchange,
-            "owner" : self.address,
-            "accountId" : self.accountId,
-            "publicKey" : req['publicKey'],
-            "maxFee" :  req['maxFee'],
-            "validUntil" : req['validUntil'],
-            "nonce" : self.nonce
+            "exchange": self.exchange,
+            "owner": self.address,
+            "accountId": self.accountId,
+            "publicKey": req['publicKey'],
+            "maxFee": req['maxFee'],
+            "validUntil": req['validUntil'],
+            "nonce": self.nonce
         }
 
     def on_update_account(self, data, request):
@@ -619,7 +616,7 @@ class LoopringV3Client(RestClient):
                 "requestType": requestType,
                 "tokenSymbol": token
             },
-            data = {
+            data={
                 "security": Security.NONE
             }
         )
@@ -667,10 +664,10 @@ class LoopringV3Client(RestClient):
             headers=headers
         )
 
-    def _create_transfer_request(self, to_b, token, amount, feeToken, feeAmount, validUntil = None, storageId = None):
+    def _create_transfer_request(self, to_b, token, amount, feeToken, feeAmount, validUntil=None, storageId=None):
         """"""
         tokenId = self.tokenIds[token]
-        decimalUnit = 10**self.tokenDecimals[tokenId]
+        decimalUnit = 10 ** self.tokenDecimals[tokenId]
         feeTokenId = self.tokenIds[feeToken]
         if storageId is None:
             storageId = self.offchainId[tokenId]
@@ -684,9 +681,9 @@ class LoopringV3Client(RestClient):
             "payeeAddr": to_b,
             "token": {
                 "tokenId": tokenId,
-                "volume": str(int(amount*decimalUnit))
+                "volume": str(int(amount * decimalUnit))
             },
-            "maxFee" : {
+            "maxFee": {
                 "tokenId": feeTokenId,
                 "volume": str(feeAmount)
             },
@@ -726,12 +723,13 @@ class LoopringV3Client(RestClient):
         )
 
     def offchainWithdraw_eddsa(self, to_b, token, amount, minGas,
-                                extraData=bytes(0), validUntil=None, storageId=None):
+                               extraData=bytes(0), validUntil=None, storageId=None):
         """"""
         feeToken, feeAmount = self.getOffChainRequestFees(token, OffchainRequestType.OFFCHAIN_WITHDRAWAL.value)
 
         data = {"security": Security.ECDSA_EIP_AUTH}
-        req = self._create_offchain_withdraw_request(to_b, token, amount, feeToken, feeAmount, minGas, extraData, validUntil, storageId)
+        req = self._create_offchain_withdraw_request(to_b, token, amount, feeToken, feeAmount, minGas, extraData,
+                                                     validUntil, storageId)
         print(f"create new req {req}")
         data.update(req)
 
@@ -756,16 +754,16 @@ class LoopringV3Client(RestClient):
         )
 
     def _create_offchain_withdraw_request(self, to: str, token, amount: float,
-                                            feeToken: str, feeAmount: str, minGas: int,
-                                            extraData=bytes(0), validUntil=None, storageId=None):
+                                          feeToken: str, feeAmount: str, minGas: int,
+                                          extraData=bytes(0), validUntil=None, storageId=None):
         """"""
         tokenId = self.tokenIds[token]
         feeTokenId = self.tokenIds[feeToken]
-        decimalUnit = 10**self.tokenDecimals[tokenId]
+        decimalUnit = 10 ** self.tokenDecimals[tokenId]
         toAddr = self.address if to == "" else to
-        onchainDataHash = Web3.keccak(b''. join([int(minGas).to_bytes(32, 'big'),
-                                                 int(toAddr, 16).to_bytes(20, 'big'),
-                                                 extraData]))[:20]
+        onchainDataHash = Web3.keccak(b''.join([int(minGas).to_bytes(32, 'big'),
+                                                int(toAddr, 16).to_bytes(20, 'big'),
+                                                extraData]))[:20]
         if storageId is None:
             storageId = self.offchainId[tokenId]
             self.offchainId[tokenId] += 2
@@ -776,16 +774,16 @@ class LoopringV3Client(RestClient):
             "owner": self.address,
             "token": {
                 "tokenId": tokenId,
-                "volume": str(int(amount*decimalUnit))
+                "volume": str(int(amount * decimalUnit))
             },
-            "maxFee" : {
+            "maxFee": {
                 "tokenId": feeTokenId,
                 "volume": feeAmount
             },
             "to": toAddr,
             "onChainDataHash": "0x" + bytes.hex(onchainDataHash),
             "storageId": storageId,
-            "validUntil" : int(time()) + 60 * 60 * 24 * 60 if validUntil is None else validUntil,
+            "validUntil": int(time()) + 60 * 60 * 24 * 60 if validUntil is None else validUntil,
             "minGas": minGas,
             "extraData": bytes.hex(extraData)
         }
@@ -794,7 +792,7 @@ class LoopringV3Client(RestClient):
         """"""
         print(f"on_withdraw get response: {data}")
 
-    def send_order(self, base_token, quote_token, buy, price, volume, ammPoolAddress = None):
+    def send_order(self, base_token, quote_token, buy, price, volume, ammPoolAddress=None):
         order = self._create_order(base_token, quote_token, buy, price, volume, ammPoolAddress)
         # print(f"create new order {order}")
         data = {"security": Security.API_KEY}
@@ -828,25 +826,25 @@ class LoopringV3Client(RestClient):
         # order base
         order = {
             # sign part
-            "exchange"      : self.exchange,
-            "accountId"     : self.accountId,
-            "storageId"     : orderId,
+            "exchange": self.exchange,
+            "accountId": self.accountId,
+            "storageId": orderId,
             "sellToken": {
                 "tokenId": tokenSId,
                 "volume": amountS
             },
-            "buyToken" : {
+            "buyToken": {
                 "tokenId": tokenBId,
                 "volume": amountB
             },
-            "validUntil"    : 1700000000,
-            "maxFeeBips"    : 50,
+            "validUntil": 1700000000,
+            "maxFeeBips": 50,
             "fillAmountBOrS": buy,
             # "taker"         : "0000000000000000000000000000000000000000",
             # aux data
-            "allOrNone"     : False,
-            "clientOrderId" : "SampleOrder-" + str(int(time()*1000)),
-            "orderType"     : "LIMIT_ORDER"
+            "allOrNone": False,
+            "clientOrderId": "SampleOrder-" + str(int(time() * 1000)),
+            "orderType": "LIMIT_ORDER"
         }
 
         if ammPoolAddress is not None:
@@ -854,7 +852,7 @@ class LoopringV3Client(RestClient):
             assert tokenSId in self.ammPools[ammPoolAddress]
             assert tokenBId in self.ammPools[ammPoolAddress]
             order["poolAddress"] = ammPoolAddress
-            order["orderType"]   = "AMM"
+            order["orderType"] = "AMM"
             order["fillAmountBOrS"] = False
 
         signer = OrderEddsaSignHelper(self.eddsaKey)
@@ -862,8 +860,8 @@ class LoopringV3Client(RestClient):
         signedMessage = signer.sign(order)
         # update signaure
         order.update({
-            "hash"     : str(msgHash),
-            "eddsaSignature" : signedMessage
+            "hash": str(msgHash),
+            "eddsaSignature": signedMessage
         })
         return order
 
@@ -898,7 +896,8 @@ class LoopringV3Client(RestClient):
         print(f"on_cancel_order {data} {request.data}")
         pass
 
-    def join_amm_pool(self, poolName, tokenAmounts, mintMinAmount, validUntil=None, storageIds=None, sigType=SignatureType.EDDSA):
+    def join_amm_pool(self, poolName, tokenAmounts, mintMinAmount, validUntil=None, storageIds=None,
+                      sigType=SignatureType.EDDSA):
         data = {"security": Security.API_KEY}
         req = self._create_join_pool_request(poolName, tokenAmounts, mintMinAmount, validUntil, storageIds)
         data.update(req)
@@ -921,28 +920,28 @@ class LoopringV3Client(RestClient):
             extra=req
         )
 
-    def _create_join_pool_request(self, poolName, joinAmounts, mintMinAmount, validUntil = None, storageIds = None):
+    def _create_join_pool_request(self, poolName, joinAmounts, mintMinAmount, validUntil=None, storageIds=None):
         poolAddress = self.ammPoolNames[poolName]
         tokenAId, tokenBId = self.ammPools[poolAddress][:2]
         poolTokenId = self.ammPools[poolAddress][2]
-        mintMinAmount = str(int(mintMinAmount * 10**self.tokenDecimals.get(poolTokenId, 8)))
+        mintMinAmount = str(int(mintMinAmount * 10 ** self.tokenDecimals.get(poolTokenId, 8)))
         req = {
             'poolAddress': poolAddress,
             'owner': self.address,
-            "joinTokens" : {
-                "pooled" : [
+            "joinTokens": {
+                "pooled": [
                     {
                         "tokenId": tokenAId,
-                        "volume" : str(int(joinAmounts[0] * 10**self.tokenDecimals[tokenAId]))
+                        "volume": str(int(joinAmounts[0] * 10 ** self.tokenDecimals[tokenAId]))
                     },
                     {
                         "tokenId": tokenBId,
-                        "volume" : str(int(joinAmounts[1] * 10**self.tokenDecimals[tokenBId]))
+                        "volume": str(int(joinAmounts[1] * 10 ** self.tokenDecimals[tokenBId]))
                     },
                 ],
-                "minimumLp" : {
-                    "tokenId" : poolTokenId,
-                    "volume"  : mintMinAmount
+                "minimumLp": {
+                    "tokenId": poolTokenId,
+                    "volume": mintMinAmount
                 }
             },
             'storageIds': [self.offchainId[tokenAId], self.offchainId[tokenBId]] if storageIds is None else storageIds,
@@ -950,8 +949,8 @@ class LoopringV3Client(RestClient):
         }
 
         if storageIds is None:
-            self.offchainId[tokenAId]+=2
-            self.offchainId[tokenBId]+=2
+            self.offchainId[tokenAId] += 2
+            self.offchainId[tokenBId] += 2
         return req
 
     def on_join_pool(self, data, request):
@@ -985,35 +984,36 @@ class LoopringV3Client(RestClient):
         poolAddress = self.ammPoolNames[poolName]
         tokenAId, tokenBId = self.ammPools[poolAddress][:2]
         poolTokenId = self.ammPools[poolAddress][2]
-        burnAmount = str(int(burnAmount * 10**self.tokenDecimals.get(poolTokenId, 18)))
+        burnAmount = str(int(burnAmount * 10 ** self.tokenDecimals.get(poolTokenId, 18)))
         req = {
             'poolAddress': poolAddress,
             'owner': self.address,
-            "exitTokens" : {
-                "unPooled" : [
+            "exitTokens": {
+                "unPooled": [
                     {
                         "tokenId": tokenAId,
-                        "volume" : str(int(exitMinAmounts[0] * 10**self.tokenDecimals[tokenAId]))
+                        "volume": str(int(exitMinAmounts[0] * 10 ** self.tokenDecimals[tokenAId]))
                     },
                     {
                         "tokenId": tokenBId,
-                        "volume" : str(int(exitMinAmounts[1] * 10**self.tokenDecimals[tokenBId]))
+                        "volume": str(int(exitMinAmounts[1] * 10 ** self.tokenDecimals[tokenBId]))
                     },
                 ],
-                "burned" : {
-                    "tokenId" : poolTokenId,
-                    "volume"  : burnAmount
+                "burned": {
+                    "tokenId": poolTokenId,
+                    "volume": burnAmount
                 }
             },
             'storageId': self.offchainId[poolTokenId],
-            'maxFee': str(int(int(exitMinAmounts[1])*0.002)),
+            'maxFee': str(int(int(exitMinAmounts[1]) * 0.002)),
             'validUntil': 1700000000
         }
-        self.offchainId[poolTokenId]+=2
+        self.offchainId[poolTokenId] += 2
         return req
 
     def on_exit_pool(self, data, request):
         print(f"PoolExit success: hash={data['hash']}")
+
 
 if __name__ == "__main__":
     loopring_rest_sample = LoopringV3Client()
