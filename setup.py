@@ -8,7 +8,7 @@ setup(
     python_requires='>=3.7',
     install_requires=[
         'bitstring',
-        'eip712-structs',
+        'eip712-structs @ git+https://github.com/konichuvak/py-eip712-structs.git@packaging',
         'web3',
         'ujson',
     ],
