@@ -1,5 +1,4 @@
 bitstring
-pyblake2
 eip712-structs
 web3
 ujson
