@@ -8,7 +8,6 @@ setup(
     python_requires='>=3.7',
     install_requires=[
         'bitstring',
-        'pysha3',
         'pyblake2',
         'eip712-structs',
         'web3',

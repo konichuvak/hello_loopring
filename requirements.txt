@@ -1,5 +1,4 @@
 bitstring
-pysha3
 pyblake2
 eip712-structs
 web3
